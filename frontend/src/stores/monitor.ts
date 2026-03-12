@@ -1,9 +1,9 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { LobsterNode, ResourceStreamPayload } from '../types/monitor'
+import { API_BASE, WS_STREAM_BASE } from '../utils/endpoints'
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8000'
-const WS_BASE = import.meta.env.VITE_WS_BASE ?? 'ws://127.0.0.1:8000/ws'
+const WS_BASE = WS_STREAM_BASE
 
 export const useMonitorStore = defineStore('monitor', () => {
   const connected = ref(false)

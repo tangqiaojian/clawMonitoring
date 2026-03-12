@@ -47,6 +47,16 @@ export interface LobsterRuntime {
   status: LobsterStatus
   cpu_percent: number
   task_count: number
+  mem_percent?: number
+}
+
+export interface LobsterHeartbeat {
+  id: string
+  name: string
+  host: string
+  status: 'online' | 'stale' | 'never'
+  last_seen: number | null
+  last_seen_ago_sec: number | null
 }
 
 export interface ResourceStreamPayload {
@@ -54,4 +64,5 @@ export interface ResourceStreamPayload {
   timestamp: number
   host: HostMetrics
   lobsters: LobsterRuntime[]
+  heartbeats: LobsterHeartbeat[]
 }

@@ -76,6 +76,23 @@ docker compose up --build
 .\scripts\stop-services.ps1
 ```
 
+### 服务器部署说明（无反向代理也可用）
+
+- 前端默认会自动连接：`http(s)://当前页面域名:8000`
+- WebSocket 默认会自动连接：`ws(s)://当前页面域名:8000/ws/stream`
+- 如果你的后端不是 `8000` 端口，请在前端启动前设置：
+
+```bash
+VITE_API_BASE=http://你的后端地址:端口
+VITE_WS_BASE=ws://你的后端地址:端口/ws/stream
+```
+
+### 龙虾节点接入（推荐新通道）
+
+- 前端监控订阅通道：`/ws/stream`
+- 龙虾节点上报通道：`/ws/report`
+- 兼容旧通道：`/ws`（不建议新接入继续使用）
+
 ## 快速启动（本地）
 
 ### 1) 启动后端
@@ -110,11 +127,15 @@ docker compose up --build
 ## 已实现接口
 
 - `GET /api/health`
+- `GET /api/snapshot`
 - `GET /api/nodes`
 - `POST /api/nodes`
 - `DELETE /api/nodes/{id}`
 - `GET /api/history/{metric}`
-- `WS /ws`（实时推送 `resource_stream`）
+- `GET /api/heartbeats`（查看节点心跳）
+- `WS /ws/stream`（前端实时订阅 `resource_stream`）
+- `WS /ws/report`（龙虾节点实时上报）
+- `WS /ws`（兼容历史混合模式）
 
 ## 当前覆盖的需求点
 

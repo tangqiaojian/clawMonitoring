@@ -2,6 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMonitorStore } from '../stores/monitor'
+import type { LobsterHeartbeat } from '../types/monitor'
+import { API_BASE } from '../utils/endpoints'
 import MetricCard from '../components/MetricCard.vue'
 import LobsterAvatar from '../components/LobsterAvatar.vue'
 import HistoryChart from '../components/HistoryChart.vue'
@@ -19,6 +21,8 @@ const { connected, payload, lobsterStats, nodes } = storeToRefs(store)
 
 const form = ref({ id: '', name: '', host: '127.0.0.1' })
 const error = ref('')
+const serverHost = ref(window.location.hostname === 'localhost' ? '' : window.location.hostname)
+const serverPort = ref(8000)
 
 const host = computed(() => payload.value?.host)
 const hostHistory = ref<Record<HostSeriesKey, Point[]>>({
@@ -38,7 +42,7 @@ const mockEnabled = ref(true)
 // 获取初始 mock 状态
 async function fetchMockState() {
   try {
-    const res = await fetch(`${import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8000'}/api/mock`)
+    const res = await fetch(`${API_BASE}/api/mock`)
     if (res.ok) {
       const data = await res.json()
       mockEnabled.value = data.enabled
@@ -53,7 +57,7 @@ async function toggleMockState(event: Event) {
   const target = event.target as HTMLInputElement
   const newState = target.checked
   try {
-    const res = await fetch(`${import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8000'}/api/mock`, {
+    const res = await fetch(`${API_BASE}/api/mock`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabled: newState })
@@ -79,7 +83,6 @@ interface AlertRecord {
 
 const alertHistory = ref<AlertRecord[]>([])
 const lastAlertTime = ref<Record<string, number>>({}) // 记录每个设备最后一次告警的时间
-const ALERT_COOLDOWN = 60 * 1000 // 1分钟冷却时间
 
 // 从localStorage加载保存的阈值，默认值为初始值
 const loadThresholds = () => {
@@ -136,6 +139,45 @@ const selectedNodeTaskHistory = computed(() => {
   if (!selectedNodeId.value) return []
   return nodeHistory.value[selectedNodeId.value]?.task ?? []
 })
+
+const heartbeats = computed<LobsterHeartbeat[]>(() => payload.value?.heartbeats ?? [])
+
+const reportWsUrl = computed(() => {
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  const host = serverHost.value.trim() || window.location.hostname
+  return `${protocol}://${host}:${serverPort.value}/ws/report`
+})
+
+const lobsterScript = computed(() => `import asyncio
+import json
+import psutil
+import websockets
+
+NODE_ID = "lobster_01"
+NODE_NAME = "龙虾节点01"
+REPORT_URL = "${reportWsUrl.value}"
+
+async def report():
+    async with websockets.connect(REPORT_URL) as ws:
+        while True:
+            payload = {
+                "id": NODE_ID,
+                "name": NODE_NAME,
+                "cpu_percent": psutil.cpu_percent(),
+                "mem_percent": psutil.virtual_memory().percent,
+                "task_count": 0,
+                "status": "active"
+            }
+            await ws.send(json.dumps(payload))
+            await asyncio.sleep(1)
+
+asyncio.run(report())
+`)
+
+function formatHeartbeatTime(ts: number | null): string {
+  if (!ts) return '从未上报'
+  return new Date(ts * 1000).toLocaleString()
+}
 
 const alertMessages = computed(() => {
   const result: string[] = []
@@ -454,35 +496,44 @@ onBeforeUnmount(() => {
             <button class="remove-btn" @click="onRemove(node.id)">移除</button>
           </li>
         </ul>
+
+        <div class="heartbeat-box">
+          <h4>实时心跳</h4>
+          <ul class="heartbeat-list">
+            <li v-for="beat in heartbeats" :key="beat.id">
+              <div>
+                <strong>{{ beat.name }}</strong>
+                <small>{{ beat.id }} @ {{ beat.host }}</small>
+              </div>
+              <div class="heartbeat-meta">
+                <span class="heartbeat-state" :data-state="beat.status">{{ beat.status }}</span>
+                <small>{{ beat.last_seen_ago_sec === null ? '未上报' : `${beat.last_seen_ago_sec}s 前` }}</small>
+                <small>{{ formatHeartbeatTime(beat.last_seen) }}</small>
+              </div>
+            </li>
+          </ul>
+        </div>
       </section>
 
       <section class="glass-card panel tutorial-panel">
         <h3><span class="icon">🦞</span> 节点接入教程</h3>
         <div class="tutorial-content">
-          <p>新安装一台“龙虾”子节点，只需三步：</p>
+          <p>把下面教程整段发给“龙虾”同事，只需要告诉他你的服务器 IP 即可接入。</p>
+          <div class="tutorial-host-inputs">
+            <label>服务器 IP/域名
+              <input v-model="serverHost" placeholder="例如 10.10.10.88 或 monitor.example.com" />
+            </label>
+            <label>后端端口
+              <input v-model.number="serverPort" type="number" min="1" max="65535" />
+            </label>
+          </div>
+          <p class="ws-preview">上报地址：<code>{{ reportWsUrl }}</code></p>
           <ol>
             <li>在控制台点击“添加节点”注册新实例。</li>
-            <li>在目标机器上安装汇报脚本依赖 <code>pip install psutil websockets</code></li>
-            <li>运行以下 Python 脚本，将数据推送到主控端：</li>
+            <li>在目标机器上安装依赖：<code>pip install psutil websockets</code></li>
+            <li>将以下脚本保存为 <code>lobster_report.py</code> 并运行。</li>
           </ol>
-          <pre><code>import asyncio, json, psutil, websockets
-
-async def report():
-    uri = "ws://[主控IP]:8000/ws"
-    async with websockets.connect(uri) as ws:
-        while True:
-            data = {
-                "id": "你的节点ID",
-                "name": "节点名称",
-                "cpu_percent": psutil.cpu_percent(),
-                "mem_percent": psutil.virtual_memory().percent,
-                "task_count": 0,
-                "status": "active"
-            }
-            await ws.send(json.dumps(data))
-            await asyncio.sleep(1)
-
-asyncio.run(report())</code></pre>
+          <pre><code>{{ lobsterScript }}</code></pre>
         </div>
       </section>
     </div>
@@ -521,6 +572,77 @@ asyncio.run(report())</code></pre>
   display: flex;
   flex-direction: column;
   gap: 15px;
+}
+
+.heartbeat-box {
+  margin-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+  padding-top: 12px;
+}
+
+.heartbeat-box h4 {
+  margin: 0 0 8px;
+  color: #bfdbfe;
+}
+
+.heartbeat-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.heartbeat-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.heartbeat-list strong {
+  display: block;
+  color: #e2e8f0;
+}
+
+.heartbeat-list small {
+  color: #94a3b8;
+  font-family: monospace;
+}
+
+.heartbeat-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.heartbeat-state {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.heartbeat-state[data-state='online'] {
+  color: #34d399;
+  border-color: rgba(52, 211, 153, 0.35);
+}
+
+.heartbeat-state[data-state='stale'] {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.35);
+}
+
+.heartbeat-state[data-state='never'] {
+  color: #94a3b8;
+  border-color: rgba(148, 163, 184, 0.35);
 }
 
 .node-list {
@@ -580,6 +702,39 @@ asyncio.run(report())</code></pre>
   color: #E2E8F0;
   margin-bottom: 12px;
   font-size: 0.95rem;
+}
+
+.tutorial-host-inputs {
+  display: grid;
+  grid-template-columns: 1fr 160px;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.tutorial-host-inputs label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #cbd5e1;
+  font-size: 0.85rem;
+}
+
+.tutorial-host-inputs input {
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.45);
+  color: #e2e8f0;
+  padding: 8px 10px;
+}
+
+.ws-preview {
+  margin-top: 4px;
+}
+
+@media (max-width: 900px) {
+  .tutorial-host-inputs {
+    grid-template-columns: 1fr;
+  }
 }
 
 .tutorial-content ol {

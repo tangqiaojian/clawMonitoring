@@ -11,7 +11,7 @@ services:
       context: ./frontend
     environment:
       - VITE_API_BASE=http://127.0.0.1:8000
-      - VITE_WS_BASE=ws://127.0.0.1:8000/ws
+      - VITE_WS_BASE=ws://127.0.0.1:8000/ws/stream
     ports:
       - "5173:5173"
     command: npm run dev -- --host 0.0.0.0 --port 5173

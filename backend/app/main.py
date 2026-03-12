@@ -5,6 +5,7 @@ import random
 import time
 from collections import deque
 from typing import Any
+import json
 
 import psutil
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -95,6 +96,32 @@ active_lobsters: dict[str, dict[str, Any]] = {}
 
 # 全局 Mock 数据开关
 MOCK_ENABLED = True
+
+
+def build_heartbeats(timestamp: float) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for node in nodes.values():
+        report = active_lobsters.get(node.id)
+        last_seen = float(report["_last_seen"]) if report and "_last_seen" in report else None
+        if last_seen is None:
+            hb_status = "never"
+            ago = None
+        else:
+            ago = max(int(timestamp - last_seen), 0)
+            hb_status = "online" if ago <= 15 else "stale"
+
+        rows.append(
+            {
+                "id": node.id,
+                "name": node.name,
+                "host": node.host,
+                "status": hb_status,
+                "last_seen": last_seen,
+                "last_seen_ago_sec": ago,
+            }
+        )
+    rows.sort(key=lambda item: item["last_seen"] or 0, reverse=True)
+    return rows
 
 def _now() -> float:
     return time.time()
@@ -275,6 +302,7 @@ def sample_metrics() -> dict[str, Any]:
         "timestamp": timestamp,
         "host": host,
         "lobsters": merged_lobsters,
+        "heartbeats": build_heartbeats(timestamp),
     }
     return payload
 
@@ -347,37 +375,79 @@ def set_mock_state(state: MockState) -> dict[str, Any]:
     return {"message": "mock state updated", "enabled": MOCK_ENABLED}
 
 
-@app.websocket("/ws")
-async def ws_handler(ws: WebSocket) -> None:
+@app.get("/api/heartbeats")
+def list_heartbeats() -> dict[str, Any]:
+    timestamp = _now()
+    return {"timestamp": timestamp, "heartbeats": build_heartbeats(timestamp)}
+
+
+def handle_report_message(text_data: str) -> None:
+    data = json.loads(text_data)
+    if not isinstance(data, dict):
+        return
+    if "id" not in data or "cpu_percent" not in data:
+        return
+
+    node_id = str(data["id"])
+    if node_id not in nodes:
+        node_name = str(data.get("name", f"Auto Node {node_id}"))
+        nodes[node_id] = Node(id=node_id, name=node_name, status="active")
+
+    active_lobsters[node_id] = {
+        **data,
+        "_last_seen": _now(),
+    }
+
+
+@app.websocket("/ws/stream")
+async def ws_stream_handler(ws: WebSocket) -> None:
     await hub.connect(ws)
     try:
         while True:
-            # 接收客户端上报的数据
-            text_data = await ws.receive_text()
-            try:
-                import json
-                data = json.loads(text_data)
-                
-                # 如果包含特定字段，视为节点主动上报
-                if isinstance(data, dict) and "id" in data and "cpu_percent" in data:
-                    node_id = data["id"]
-                    
-                    # 1. 自动添加到 nodes
-                    if node_id not in nodes:
-                        node_name = data.get("name", f"Auto Node {node_id}")
-                        nodes[node_id] = Node(id=node_id, name=node_name, status="active")
-                    
-                    # 2. 更新真实上报记录
-                    active_lobsters[node_id] = {
-                        **data,
-                        "_last_seen": _now(),
-                    }
-            except json.JSONDecodeError:
-                # 忽略非 JSON 数据（如前端的 'subscribe:resource_stream'）
-                pass
-
+            # 前端可能发送 subscribe/ping，这里仅消费不处理
+            await ws.receive_text()
     except WebSocketDisconnect:
         hub.disconnect(ws)
     except Exception:
-        # 有可能接收到非 JSON 数据，忽略并断开
         hub.disconnect(ws)
+
+
+@app.websocket("/ws/report")
+async def ws_report_handler(ws: WebSocket) -> None:
+    await ws.accept()
+    try:
+        while True:
+            text_data = await ws.receive_text()
+            try:
+                handle_report_message(text_data)
+            except json.JSONDecodeError:
+                continue
+    except WebSocketDisconnect:
+        return
+    except Exception:
+        return
+
+
+@app.websocket("/ws")
+async def ws_legacy_handler(ws: WebSocket) -> None:
+    # Backward compatibility:
+    # - valid report JSON: write heartbeat/runtime data
+    # - other text: treat as stream subscription
+    await ws.accept()
+    is_stream_client = False
+    try:
+        while True:
+            text_data = await ws.receive_text()
+            try:
+                handle_report_message(text_data)
+            except json.JSONDecodeError:
+                if not is_stream_client:
+                    hub.clients.add(ws)
+                    is_stream_client = True
+                continue
+    except WebSocketDisconnect:
+        if is_stream_client:
+            hub.disconnect(ws)
+    except Exception:
+        if is_stream_client:
+            hub.disconnect(ws)
