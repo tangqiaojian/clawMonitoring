@@ -959,9 +959,21 @@ onBeforeUnmount(() => {
       <div class="control-section">
         <h3>📋 区域说明</h3>
         <ul class="area-list">
-          <li>💻 <strong>工作区</strong>：12个工位，员工在工位上办公</li>
-          <li>🛋️ <strong>休息区</strong>：沙发、书柜、茶几，空闲员工在此休息</li>
-          <li>🐱 <strong>猫咪角</strong>：办公室吉祥物正在打盹</li>
+          <li class="area-item">
+            <span class="area-icon">💻</span>
+            <strong class="area-title">工作区</strong>
+            <span class="area-desc">12个工位，员工在工位上办公</span>
+          </li>
+          <li class="area-item">
+            <span class="area-icon">🛋️</span>
+            <strong class="area-title">休息区</strong>
+            <span class="area-desc">沙发、书柜、茶几，空闲员工在此休息</span>
+          </li>
+          <li class="area-item">
+            <span class="area-icon">🐱</span>
+            <strong class="area-title">猫咪角</strong>
+            <span class="area-desc">办公室吉祥物正在打盹</span>
+          </li>
         </ul>
       </div>
 
@@ -1235,6 +1247,45 @@ onBeforeUnmount(() => {
   padding-left: 12px;
 }
 
+.area-item {
+  display: grid;
+  grid-template-columns: 36px 92px 1fr;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 8px 12px !important;
+  border-left: 3px solid rgba(218, 165, 32, 0.35) !important;
+  background: linear-gradient(90deg, rgba(255, 214, 143, 0.08), rgba(255, 248, 232, 0.03));
+}
+
+.area-item:hover {
+  border-left-color: #DAA520 !important;
+  background: linear-gradient(90deg, rgba(255, 214, 143, 0.14), rgba(255, 248, 232, 0.06)) !important;
+}
+
+.area-icon {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(218, 165, 32, 0.28);
+  font-size: 15px;
+}
+
+.area-title {
+  color: #F5D06A;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.area-desc {
+  color: rgba(255, 248, 232, 0.85);
+  font-size: 0.86rem;
+}
+
 /* ---------- 响应式 ---------- */
 @media (max-width: 968px) {
   .studio-header {
@@ -1248,6 +1299,16 @@ onBeforeUnmount(() => {
   }
   .studio-controls {
     grid-template-columns: 1fr;
+  }
+
+  .area-item {
+    grid-template-columns: 32px 1fr;
+    row-gap: 3px;
+  }
+
+  .area-desc {
+    grid-column: 1 / -1;
+    padding-left: 1px;
   }
 }
 </style>

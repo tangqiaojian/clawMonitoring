@@ -146,6 +146,8 @@ export const useMonitorStore = defineStore('monitor', () => {
     addNode,
     removeNode,
     fetchHistory,
+    startPolling,
+    stopPolling,
     connect,
     disconnect,
   }
