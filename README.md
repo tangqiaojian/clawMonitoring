@@ -19,6 +19,63 @@
 └── docker-compose.yml
 ```
 
+## 项目启动说明
+
+### 环境要求
+
+- Node.js 18+
+- Python 3.10+
+- npm / pip
+- （可选）Docker Desktop（用于容器方式启动）
+
+### 启动方式一：本地开发启动（推荐）
+
+1. 启动后端（FastAPI）
+
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+2. 新开一个终端，启动前端（Vite）
+
+```bash
+cd frontend
+npm install
+npm run dev -- --host 0.0.0.0 --port 5173
+```
+
+3. 访问地址
+
+- 前端：`http://127.0.0.1:5173`
+- 后端健康检查：`http://127.0.0.1:8000/api/health`
+
+### 启动方式二：Docker 启动
+
+```bash
+docker compose up --build
+```
+
+- 前端：`http://127.0.0.1:5173`
+- 后端：`http://127.0.0.1:8000`
+
+### 启动方式三：Windows 一键启动
+
+双击根目录 `onekey-deploy-start.bat`，或执行：
+
+```powershell
+.\scripts\onekey-deploy-start.ps1
+```
+
+停止服务：
+
+```powershell
+.\scripts\stop-services.ps1
+```
+
 ## 快速启动（本地）
 
 ### 1) 启动后端
