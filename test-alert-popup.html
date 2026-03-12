@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>告警弹窗测试工具</title>
+    <style>
+        body {
+            font-family: 'SF Pro Display', 'PingFang SC', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 30px;
+            background: #020918;
+            color: #e2f4ff;
+            line-height: 1.6;
+        }
+        .card {
+            background: linear-gradient(140deg, rgba(210, 239, 255, 0.12), rgba(255, 255, 255, 0.04));
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 18px;
+            padding: 24px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(20px) saturate(140%);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #fff;
+        }
+        h2 {
+            color: #06B6D4;
+            margin-top: 0;
+            font-size: 1.3rem;
+        }
+        .btn {
+            background: linear-gradient(145deg, rgba(6, 182, 212, 0.28), rgba(6, 182, 212, 0.14));
+            border: 1px solid rgba(6, 182, 212, 0.4);
+            border-radius: 12px;
+            padding: 12px 20px;
+            color: #e2f4ff;
+            cursor: pointer;
+            font-size: 1rem;
+            margin: 5px;
+            transition: all 0.2s ease;
+        }
+        .btn:hover {
+            background: linear-gradient(145deg, rgba(6, 182, 212, 0.38), rgba(6, 182, 212, 0.24));
+            transform: translateY(-2px);
+        }
+        .btn-danger {
+            background: linear-gradient(145deg, rgba(239, 68, 68, 0.28), rgba(239, 68, 68, 0.14));
+            border-color: rgba(239, 68, 68, 0.4);
+        }
+        .btn-danger:hover {
+            background: linear-gradient(145deg, rgba(239, 68, 68, 0.38), rgba(239, 68, 68, 0.24));
+        }
+        .btn-success {
+            background: linear-gradient(145deg, rgba(16, 185, 129, 0.28), rgba(16, 185, 129, 0.14));
+            border-color: rgba(16, 185, 129, 0.4);
+        }
+        .btn-success:hover {
+            background: linear-gradient(145deg, rgba(16, 185, 129, 0.38), rgba(16, 185, 129, 0.24));
+        }
+        .instruction {
+            background: rgba(6, 182, 212, 0.1);
+            border-left: 3px solid #06B6D4;
+            padding: 12px 16px;
+            margin: 15px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .code {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 12px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin: 10px 0;
+            display: none;
+        }
+        .status.success {
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            color: #10b981;
+        }
+        .status.info {
+            background: rgba(6, 182, 212, 0.2);
+            border: 1px solid rgba(6, 182, 212, 0.4);
+            color: #06B6D4;
+        }
+        a {
+            color: #06B6D4;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .test-step {
+            margin: 15px 0;
+            padding: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+        }
+        .test-step h3 {
+            margin-top: 0;
+            color: #f59e0b;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔔 告警弹窗功能测试工具</h1>
+
+    <div class="card">
+        <h2>📋 测试前准备</h2>
+        <div class="instruction">
+            请确保前端开发服务器正在运行：<a href="http://localhost:5173/" target="_blank">http://localhost:5173/</a>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>🧪 测试方法一：手动调整阈值触发告警</h2>
+        
+        <div class="test-step">
+            <h3>步骤 1：打开监控页面</h3>
+            <p>访问 <a href="http://localhost:5173/" target="_blank">http://localhost:5173/</a></p>
+        </div>
+
+        <div class="test-step">
+            <h3>步骤 2：调低阈值触发告警</h3>
+            <p>在"阈值设置"区域将各项阈值调低到当前系统指标以下：</p>
+            <ul>
+                <li>CPU 阈值调到 10% （确保低于当前 CPU 使用率）</li>
+                <li>内存阈值调到 30% （确保低于当前内存使用率）</li>
+                <li>GPU 阈值调到 10% （如果有 GPU 的话）</li>
+            </ul>
+        </div>
+
+        <div class="test-step">
+            <h3>步骤 3：观察弹窗</h3>
+            <p>右上角应该会自动滑出告警弹窗，显示对应的告警信息</p>
+        </div>
+
+        <div class="test-step">
+            <h3>步骤 4：测试关闭功能</h3>
+            <p>点击弹窗右上角的 × 按钮，弹窗应该会平滑关闭</p>
+        </div>
+
+        <div class="test-step">
+            <h3>步骤 5：测试自动弹出</h3>
+            <p>稍微调整阈值，触发新的告警，弹窗应该会自动再次弹出</p>
+        </div>
+
+        <div class="test-step">
+            <h3>步骤 6：测试自动关闭</h3>
+            <p>将阈值调高到正常水平，所有告警消失后，弹窗应该会自动关闭</p>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>🔧 测试方法二：代码注入强制触发告警</h2>
+        <p>如果当前系统指标较低无法触发告警，可以在浏览器控制台执行以下代码：</p>
+        
+        <div class="code">
+            // 打开监控页面后，按 F12 打开控制台，执行以下代码：<br>
+            const store = document.querySelector('#app')._vnode.component.proxy.$pinia.state.value.monitor<br>
+            store.payload.host.cpu_percent = 95<br>
+            store.payload.host.mem_percent = 90<br>
+            store.payload.host.gpu.load = 92
+        </div>
+
+        <button class="btn btn-danger" onclick="copyCode()">复制代码到剪贴板</button>
+        <div id="copyStatus" class="status success">代码已复制到剪贴板！</div>
+    </div>
+
+    <div class="card">
+        <h2>✅ 阈值保存功能测试</h2>
+        <div class="test-step">
+            <h3>步骤 1：调整阈值</h3>
+            <p>拖动阈值滑块到任意值</p>
+        </div>
+        <div class="test-step">
+            <h3>步骤 2：点击保存</h3>
+            <p>点击阈值设置右上角的"保存设置"按钮，会提示保存成功</p>
+        </div>
+        <div class="test-step">
+            <h3>步骤 3：刷新页面</h3>
+            <p>刷新页面后，阈值应该保持为你保存的值</p>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>🎯 功能特性验证清单</h2>
+        <div style="display: grid; gap: 10px;">
+            <label><input type="checkbox"> 弹窗从右上角平滑滑入</label>
+            <label><input type="checkbox"> 弹窗有红色呼吸灯脉动效果</label>
+            <label><input type="checkbox"> 显示所有当前告警信息</label>
+            <label><input type="checkbox"> 点击关闭按钮可以关闭弹窗</label>
+            <label><input type="checkbox"> 新告警产生时弹窗自动重新显示</label>
+            <label><input type="checkbox"> 所有告警消除时弹窗自动关闭</label>
+            <label><input type="checkbox"> 阈值调整后点击保存可以持久化</label>
+            <label><input type="checkbox"> 刷新页面后阈值保持不变</label>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>🐛 如果没有看到弹窗</h2>
+        <div class="instruction">
+            请检查：
+            <ol>
+                <li>是否确实有告警产生（阈值低于当前指标）</li>
+                <li>浏览器控制台是否有错误信息</li>
+                <li>是否被浏览器的弹窗拦截器拦截</li>
+                <li>尝试刷新页面后重新测试</li>
+            </ol>
+        </div>
+        <button class="btn" onclick="window.open('http://localhost:5173/', '_blank')">打开监控页面</button>
+    </div>
+
+    <script>
+        function copyCode() {
+            const code = `const store = document.querySelector('#app')._vnode.component.proxy.$pinia.state.value.monitor
+store.payload.host.cpu_percent = 95
+store.payload.host.mem_percent = 90
+store.payload.host.gpu.load = 92`
+            navigator.clipboard.writeText(code).then(() => {
+                const status = document.getElementById('copyStatus')
+                status.style.display = 'block'
+                setTimeout(() => {
+                    status.style.display = 'none'
+                }, 2000)
+            })
+        }
+    </script>
+</body>
+</html>

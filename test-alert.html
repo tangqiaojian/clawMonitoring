@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>告警弹窗测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #020918;
+            color: #e2f4ff;
+        }
+        .info {
+            background: rgba(210, 239, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .feature {
+            margin: 10px 0;
+            padding: 10px;
+            border-left: 3px solid #06B6D4;
+        }
+        a {
+            color: #06B6D4;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔔 告警弹窗功能已实现</h1>
+    
+    <div class="info">
+        <h2>✅ 功能说明</h2>
+        <div class="feature">
+            <strong>位置：</strong>弹窗固定显示在页面右上角
+        </div>
+        <div class="feature">
+            <strong>动画效果：</strong>
+            <ul>
+                <li>从右侧滑入的入场动画</li>
+                <li>呼吸灯脉动效果，提醒用户有告警</li>
+                <li>平滑的关闭动画</li>
+            </ul>
+        </div>
+        <div class="feature">
+            <strong>交互功能：</strong>
+            <ul>
+                <li>点击右上角 × 按钮可以关闭弹窗</li>
+                <li>当有新的告警产生时，弹窗会自动重新显示</li>
+                <li>当所有告警都恢复正常时，弹窗会自动关闭</li>
+            </ul>
+        </div>
+        <div class="feature">
+            <strong>样式：</strong>
+            <ul>
+                <li>半透明玻璃态效果，与整体设计风格统一</li>
+                <li>红色系主题，突出告警的重要性</li>
+                <li>支持多条告警信息同时显示</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="info">
+        <h2>🚀 测试方法</h2>
+        <p>1. 访问开发服务器：<a href="http://localhost:5173/" target="_blank">http://localhost:5173/</a></p>
+        <p>2. 调整阈值设置到较低的值，触发告警：</p>
+        <ul>
+            <li>CPU 阈值调低到当前 CPU 使用率以下</li>
+            <li>内存阈值调低到当前内存使用率以下</li>
+            <li>GPU 阈值调低到当前 GPU 负载以下</li>
+        </ul>
+        <p>3. 观察右上角是否出现告警弹窗</p>
+        <p>4. 测试关闭按钮功能</p>
+        <p>5. 调整阈值恢复正常，观察弹窗是否自动消失</p>
+    </div>
+
+    <div class="info">
+        <h2>📝 代码修改说明</h2>
+        <ul>
+            <li>新增 <code>AlertPopup.vue</code> 组件：独立的告警弹窗组件</li>
+            <li>修改 <code>App.vue</code>：
+                <ul>
+                    <li>导入 AlertPopup 组件</li>
+                    <li>添加告警显示状态管理</li>
+                    <li>添加告警变化监听，自动显示弹窗</li>
+                    <li>替换原有的顶部告警条为右上角弹窗</li>
+                </ul>
+            </li>
+            <li>修改 <code>style.css</code>：移除原有的 alert-bar 相关样式</li>
+        </ul>
+    </div>
+</body>
+</html>
