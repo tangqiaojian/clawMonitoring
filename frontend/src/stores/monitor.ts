@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { LobsterNode, ResourceStreamPayload } from '../types/monitor'
+import type { LobsterNode, ResourceStreamPayload, WorkRecord } from '../types/monitor'
 import { API_BASE, WS_STREAM_BASE } from '../utils/endpoints'
 
 const WS_BASE = WS_STREAM_BASE
@@ -71,6 +71,15 @@ export const useMonitorStore = defineStore('monitor', () => {
     const data = (await res.json()) as ResourceStreamPayload
     payload.value = data
     lastUpdate.value = Date.now()
+  }
+
+  async function fetchWorkRecords(nodeId: string, limit = 30): Promise<WorkRecord[]> {
+    const res = await fetch(`${API_BASE}/api/work/${encodeURIComponent(nodeId)}?limit=${limit}`)
+    if (!res.ok) {
+      return []
+    }
+    const data = (await res.json()) as { records: WorkRecord[] }
+    return data.records ?? []
   }
 
   function startPolling() {
@@ -146,6 +155,7 @@ export const useMonitorStore = defineStore('monitor', () => {
     addNode,
     removeNode,
     fetchHistory,
+    fetchWorkRecords,
     startPolling,
     stopPolling,
     connect,

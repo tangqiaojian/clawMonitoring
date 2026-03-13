@@ -1,8 +1,8 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMonitorStore } from '../stores/monitor'
-import type { LobsterHeartbeat } from '../types/monitor'
+import type { LobsterHeartbeat, WorkRecord } from '../types/monitor'
 import { API_BASE } from '../utils/endpoints'
 import MetricCard from '../components/MetricCard.vue'
 import LobsterAvatar from '../components/LobsterAvatar.vue'
@@ -23,6 +23,17 @@ const form = ref({ id: '', name: '', host: '127.0.0.1' })
 const error = ref('')
 const serverHost = ref(window.location.hostname === 'localhost' ? '' : window.location.hostname)
 const serverPort = ref(8000)
+const tutorialNodeId = ref('lobster_01')
+const tutorialNodeName = ref('龙虾节点')
+const tutorialScript = ref('')
+const recentWorkRecords = ref<WorkRecord[]>([])
+const upgradeGuide = ref({
+  version: '',
+  script_url: '',
+  linux_upgrade: '',
+  windows_upgrade: '',
+})
+let workRecordTimer: number | null = null
 
 const host = computed(() => payload.value?.host)
 const hostHistory = ref<Record<HostSeriesKey, Point[]>>({
@@ -36,6 +47,8 @@ const lastNetwork = ref<{ up: number; down: number; t: number } | null>(null)
 
 const selectedNodeId = ref<string | null>(null)
 const detailOpen = ref(false)
+const tutorialModalOpen = ref(false)
+const copySuccess = ref('')
 const alertVisible = ref(true)
 const mockEnabled = ref(true)
 
@@ -141,43 +154,109 @@ const selectedNodeTaskHistory = computed(() => {
 })
 
 const heartbeats = computed<LobsterHeartbeat[]>(() => payload.value?.heartbeats ?? [])
-
-const reportWsUrl = computed(() => {
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  const host = serverHost.value.trim() || window.location.hostname
-  return `${protocol}://${host}:${serverPort.value}/ws/report`
+const runtimes = computed(() => payload.value?.lobsters ?? [])
+const runtimeMap = computed(() => {
+  const map = new Map<string, (typeof runtimes.value)[number]>()
+  runtimes.value.forEach((item) => map.set(item.id, item))
+  return map
 })
 
-const lobsterScript = computed(() => `import asyncio
-import json
-import psutil
-import websockets
+const reportHttpBase = computed(() => {
+  const host = serverHost.value.trim() || window.location.hostname
+  return `http://${host}:${serverPort.value}`
+})
+const tutorialCopyText = computed(() => {
+  const lines = [
+    '节点接入教程（带进度上报）',
+    `接入地址：${reportHttpBase.value}`,
+    `脚本版本：${upgradeGuide.value.version || '--'}`,
+    '',
+    '步骤：',
+    '1. 在控制台点击“添加节点”注册新实例。',
+    '2. 在目标机器安装依赖：pip install psutil websockets',
+    '3. 保存并运行 lobster_report.py 脚本。',
+    '',
+    '脚本内容：',
+    tutorialScript.value || '脚本加载中...',
+    '',
+    '脚本更新后一键升级：',
+    `Linux/macOS: ${upgradeGuide.value.linux_upgrade || '加载中...'}`,
+    `Windows PowerShell: ${upgradeGuide.value.windows_upgrade || '加载中...'}`,
+  ]
+  return lines.join('\n')
+})
 
-NODE_ID = "lobster_01"
-NODE_NAME = "龙虾节点01"
-REPORT_URL = "${reportWsUrl.value}"
+async function copyTutorialToClipboard() {
+  const text = tutorialCopyText.value
+  try {
+    await navigator.clipboard.writeText(text)
+    copySuccess.value = '已复制'
+  } catch {
+    const textArea = document.createElement('textarea')
+    textArea.value = text
+    textArea.style.position = 'fixed'
+    textArea.style.opacity = '0'
+    document.body.appendChild(textArea)
+    textArea.select()
+    try {
+      document.execCommand('copy')
+      copySuccess.value = '已复制'
+    } catch {
+      copySuccess.value = '复制失败'
+    } finally {
+      document.body.removeChild(textArea)
+    }
+  }
+  window.setTimeout(() => {
+    copySuccess.value = ''
+  }, 1800)
+}
 
-async def report():
-    async with websockets.connect(REPORT_URL) as ws:
-        while True:
-            payload = {
-                "id": NODE_ID,
-                "name": NODE_NAME,
-                "cpu_percent": psutil.cpu_percent(),
-                "mem_percent": psutil.virtual_memory().percent,
-                "task_count": 0,
-                "status": "active"
-            }
-            await ws.send(json.dumps(payload))
-            await asyncio.sleep(1)
+async function refreshTutorialAssets() {
+  const host = serverHost.value.trim() || window.location.hostname
+  const params = new URLSearchParams({
+    server_host: host,
+    server_port: String(serverPort.value),
+    node_id: tutorialNodeId.value.trim() || 'lobster_01',
+    node_name: tutorialNodeName.value.trim() || '龙虾节点',
+  })
+  try {
+    const scriptRes = await fetch(`${API_BASE}/api/agent/script?${params.toString()}`)
+    tutorialScript.value = scriptRes.ok ? await scriptRes.text() : ''
+  } catch {
+    tutorialScript.value = ''
+  }
+  try {
+    const guideRes = await fetch(`${API_BASE}/api/agent/upgrade-guide?${params.toString()}`)
+    if (guideRes.ok) {
+      upgradeGuide.value = await guideRes.json()
+    }
+  } catch {
+    upgradeGuide.value = { version: '', script_url: '', linux_upgrade: '', windows_upgrade: '' }
+  }
+}
 
-asyncio.run(report())
-`)
+async function fetchRecentWorkRecords() {
+  try {
+    const res = await fetch(`${API_BASE}/api/work?limit=25`)
+    if (!res.ok) return
+    const data = (await res.json()) as { records: WorkRecord[] }
+    recentWorkRecords.value = data.records ?? []
+  } catch {
+    // ignore
+  }
+}
 
 function formatHeartbeatTime(ts: number | null): string {
   if (!ts) return '从未上报'
   return new Date(ts * 1000).toLocaleString()
 }
+
+watch([serverHost, serverPort, tutorialNodeId, tutorialNodeName], () => {
+  refreshTutorialAssets().catch(() => {
+    // ignore
+  })
+})
 
 const alertMessages = computed(() => {
   const result: string[] = []
@@ -386,11 +465,22 @@ onMounted(async () => {
   store.connect()
   store.startPolling()
   await fetchMockState()
+  await refreshTutorialAssets()
+  await fetchRecentWorkRecords()
+  workRecordTimer = window.setInterval(() => {
+    fetchRecentWorkRecords().catch(() => {
+      // ignore
+    })
+  }, 5000)
 })
 
 onBeforeUnmount(() => {
   store.disconnect()
   store.stopPolling()
+  if (workRecordTimer !== null) {
+    window.clearInterval(workRecordTimer)
+    workRecordTimer = null
+  }
 })
 </script>
 
@@ -492,7 +582,18 @@ onBeforeUnmount(() => {
         <p v-if="error" class="error">{{ error }}</p>
         <ul class="node-list">
           <li v-for="node in nodes" :key="node.id">
-            <span>{{ node.name }} <small>({{ node.id }}) @ {{ node.host }}</small></span>
+            <div class="node-main">
+              <span>{{ node.name }} <small>({{ node.id }}) @ {{ node.host }}</small></span>
+              <p v-if="runtimeMap.get(node.id)?.current_work" class="node-work">
+                当前：{{ runtimeMap.get(node.id)?.current_work }}
+                <em v-if="runtimeMap.get(node.id)?.progress_percent !== null && runtimeMap.get(node.id)?.progress_percent !== undefined">
+                  {{ runtimeMap.get(node.id)?.progress_percent?.toFixed(0) }}%
+                </em>
+              </p>
+              <p v-if="runtimeMap.get(node.id)?.last_completed_work" class="node-done">
+                最近完成：{{ runtimeMap.get(node.id)?.last_completed_work }}
+              </p>
+            </div>
             <button class="remove-btn" @click="onRemove(node.id)">移除</button>
           </li>
         </ul>
@@ -513,12 +614,51 @@ onBeforeUnmount(() => {
             </li>
           </ul>
         </div>
+
+        <div class="work-record-box">
+          <h4>工作记录查询</h4>
+          <ul class="work-record-list">
+            <li v-for="item in recentWorkRecords" :key="item.id">
+              <div class="record-head">
+                <strong>{{ item.node_id }}</strong>
+                <small>{{ new Date(item.timestamp * 1000).toLocaleString() }}</small>
+              </div>
+              <p>{{ item.title }}</p>
+              <small v-if="item.detail">{{ item.detail }}</small>
+              <div class="record-foot">
+                <span>{{ item.status }}</span>
+                <span v-if="item.progress_percent !== null && item.progress_percent !== undefined">{{ item.progress_percent.toFixed(0) }}%</span>
+              </div>
+            </li>
+          </ul>
+        </div>
       </section>
 
       <section class="glass-card panel tutorial-panel">
-        <h3><span class="icon">🦞</span> 节点接入教程</h3>
+        <h3><span class="icon">🦞</span> 节点接入教程（带进度上报）</h3>
+        <div class="tutorial-teaser">
+          <p>已改为弹窗模式，避免卡片内容过长导致错位。点击按钮可查看完整接入脚本和一键升级命令。</p>
+          <p class="ws-preview">接入地址：<code>{{ reportHttpBase }}</code>（脚本版本：{{ upgradeGuide.version || '--' }}）</p>
+          <div class="tutorial-actions">
+            <button class="tutorial-open-btn" @click="tutorialModalOpen = true">打开接入教程弹窗</button>
+            <button class="tutorial-copy-btn" @click="copyTutorialToClipboard">一键复制教程</button>
+            <span v-if="copySuccess" class="copy-tip">{{ copySuccess }}</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div v-if="tutorialModalOpen" class="tutorial-modal-backdrop" @click.self="tutorialModalOpen = false">
+      <section class="glass-card panel tutorial-modal">
+        <header class="tutorial-modal-header">
+          <h3><span class="icon">🦞</span> 节点接入教程（带进度上报）</h3>
+          <div class="tutorial-modal-actions">
+            <button class="tutorial-copy-btn" @click="copyTutorialToClipboard">一键复制教程</button>
+            <button class="tutorial-close-btn" @click="tutorialModalOpen = false">关闭</button>
+          </div>
+        </header>
         <div class="tutorial-content">
-          <p>把下面教程整段发给“龙虾”同事，只需要告诉他你的服务器 IP 即可接入。</p>
+          <p>把下面教程整段发给“龙虾”同事即可接入，脚本会实时上报当前工作、进度和完成记录。</p>
           <div class="tutorial-host-inputs">
             <label>服务器 IP/域名
               <input v-model="serverHost" placeholder="例如 10.10.10.88 或 monitor.example.com" />
@@ -527,18 +667,30 @@ onBeforeUnmount(() => {
               <input v-model.number="serverPort" type="number" min="1" max="65535" />
             </label>
           </div>
-          <p class="ws-preview">上报地址：<code>{{ reportWsUrl }}</code></p>
+          <div class="tutorial-host-inputs">
+            <label>节点ID
+              <input v-model="tutorialNodeId" placeholder="lobster_01" />
+            </label>
+            <label>节点名
+              <input v-model="tutorialNodeName" placeholder="龙虾节点" />
+            </label>
+          </div>
+          <p class="ws-preview">接入地址：<code>{{ reportHttpBase }}</code>（脚本版本：{{ upgradeGuide.version || '--' }}）</p>
           <ol>
             <li>在控制台点击“添加节点”注册新实例。</li>
             <li>在目标机器上安装依赖：<code>pip install psutil websockets</code></li>
             <li>将以下脚本保存为 <code>lobster_report.py</code> 并运行。</li>
           </ol>
-          <pre><code>{{ lobsterScript }}</code></pre>
+          <pre><code>{{ tutorialScript || '脚本加载中...' }}</code></pre>
+
+          <h4>脚本更新后一键升级（直接发给龙虾）</h4>
+          <p>Linux / macOS</p>
+          <pre><code>{{ upgradeGuide.linux_upgrade || '加载中...' }}</code></pre>
+          <p>Windows PowerShell</p>
+          <pre><code>{{ upgradeGuide.windows_upgrade || '加载中...' }}</code></pre>
         </div>
       </section>
     </div>
-
-
 
     <NodeDetailModal
       :open="detailOpen"
@@ -657,11 +809,18 @@ onBeforeUnmount(() => {
 .node-list li {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 10px;
   padding: 8px 12px;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 6px;
   border-left: 3px solid #8B5CF6;
+}
+
+.node-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .node-list li span {
@@ -672,6 +831,24 @@ onBeforeUnmount(() => {
 .node-list li small {
   color: #94A3B8;
   font-family: monospace;
+}
+
+.node-work {
+  margin: 2px 0 0;
+  font-size: 0.8rem;
+  color: #bfdbfe;
+}
+
+.node-work em {
+  margin-left: 6px;
+  color: #34d399;
+  font-style: normal;
+}
+
+.node-done {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #93c5fd;
 }
 
 .remove-btn {
@@ -690,12 +867,167 @@ onBeforeUnmount(() => {
   border-color: #F87171;
 }
 
+.work-record-box {
+  margin-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+  padding-top: 12px;
+}
+
+.work-record-box h4 {
+  margin: 0 0 8px;
+  color: #bfdbfe;
+}
+
+.work-record-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.work-record-list li {
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.record-head,
+.record-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.work-record-list p {
+  margin: 4px 0;
+  color: #e2e8f0;
+  font-size: 0.86rem;
+}
+
+.work-record-list small {
+  color: #94a3b8;
+  font-family: monospace;
+}
+
 /* =========== 教程面板 =========== */
 .tutorial-panel h3 {
   display: flex;
   align-items: center;
   gap: 8px;
   color: #10B981;
+}
+
+.tutorial-teaser {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tutorial-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.tutorial-open-btn {
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.16);
+  color: #bbf7d0;
+  border-radius: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.tutorial-open-btn:hover {
+  background: rgba(16, 185, 129, 0.24);
+}
+
+.tutorial-copy-btn {
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  background: rgba(30, 41, 59, 0.68);
+  color: #e2e8f0;
+  border-radius: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.tutorial-copy-btn:hover {
+  border-color: rgba(148, 163, 184, 0.85);
+}
+
+.copy-tip {
+  color: #86efac;
+  font-size: 0.86rem;
+}
+
+.tutorial-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(2, 6, 23, 0.65);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 3vh 24px;
+}
+
+.tutorial-modal {
+  width: min(1100px, 96vw);
+  height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tutorial-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+}
+
+.tutorial-modal-header h3 {
+  margin: 0;
+}
+
+.tutorial-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tutorial-close-btn {
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(15, 23, 42, 0.65);
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.tutorial-close-btn:hover {
+  border-color: rgba(226, 232, 240, 0.75);
+}
+
+.tutorial-content {
+  overflow: auto;
+  margin-top: 12px;
+  padding-right: 2px;
 }
 
 .tutorial-content p {
@@ -734,6 +1066,25 @@ onBeforeUnmount(() => {
 @media (max-width: 900px) {
   .tutorial-host-inputs {
     grid-template-columns: 1fr;
+  }
+
+  .tutorial-modal-backdrop {
+    padding: 10px;
+  }
+
+  .tutorial-modal {
+    width: 100%;
+    height: calc(100vh - 20px);
+  }
+
+  .tutorial-modal-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .tutorial-modal-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 }
 

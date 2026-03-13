@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed } from 'vue'
 import type { LobsterRuntime } from '../types/monitor'
 import HistoryChart from './HistoryChart.vue'

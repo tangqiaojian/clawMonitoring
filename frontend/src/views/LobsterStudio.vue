@@ -1,7 +1,9 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMonitorStore } from '../stores/monitor'
+import { API_BASE } from '../utils/endpoints'
+import type { WorkRecord } from '../types/monitor'
 
 const store = useMonitorStore()
 const { payload, connected } = storeToRefs(store)
@@ -19,6 +21,8 @@ const systemLoad = computed(() => {
 const workerStates = computed(() => {
   return payload.value?.lobsters ?? []
 })
+const recentRecords = ref<WorkRecord[]>([])
+let recordTimer: number | null = null
 
 // 办公室动画帧
 const animationFrame = ref(0)
@@ -107,6 +111,7 @@ function handleMouseMove(e: MouseEvent) {
   workerStates.value.forEach((worker, index) => {
     if (index < workPositions.length) {
       const pos = workPositions[index]
+      if (!pos) return
       if (mouseX >= pos.x - 15 && mouseX <= pos.x + 15 &&
           mouseY >= pos.y - 15 && mouseY <= pos.y + 30) {
         foundWorker = worker
@@ -125,6 +130,22 @@ function handleMouseMove(e: MouseEvent) {
 
 function handleMouseLeave() {
   hoveredWorker.value = null
+}
+
+function formatRecordTime(ts?: number) {
+  if (!ts) return '--'
+  return new Date(ts * 1000).toLocaleString()
+}
+
+async function loadRecentRecords() {
+  try {
+    const res = await fetch(`${API_BASE}/api/work?limit=20`)
+    if (!res.ok) return
+    const data = (await res.json()) as { records: WorkRecord[] }
+    recentRecords.value = data.records ?? []
+  } catch {
+    // ignore
+  }
 }
 
 // ========== 像素风办公室物品 — 温馨房间布局 ==========
@@ -389,7 +410,7 @@ function drawOfficeItem(ctx: CanvasRenderingContext2D, item: any, frame: number)
         for (let b = 0; b < 6; b++) {
           const bw = 6 + Math.floor(Math.abs(Math.sin(shelf * 7 + b * 3)) * 5)
           const bh = 18 + Math.floor(Math.abs(Math.cos(shelf * 5 + b * 2)) * 6)
-          ctx.fillStyle = bookColors[(shelf * 3 + b) % bookColors.length]
+          ctx.fillStyle = bookColors[(shelf * 3 + b) % bookColors.length] || '#C44444'
           ctx.fillRect(bx, by + (24 - bh), bw, bh)
           // 书脊高光
           ctx.fillStyle = 'rgba(255,255,255,0.2)'
@@ -855,8 +876,9 @@ function animate() {
   workerStates.value.forEach((worker, index) => {
     if (index < workPositions.length) {
       const pos = workPositions[index]
+      if (!pos) return
       const speedMultiplier = 0.5 + systemLoad.value * 1.5
-      drawWorker(ctx, pos.x, pos.y, workerColors[index % workerColors.length], worker.status, speedMultiplier, animationFrame.value, 'work')
+      drawWorker(ctx, pos.x, pos.y, workerColors[index % workerColors.length] || '#3498DB', worker.status, speedMultiplier, animationFrame.value, 'work')
     }
   })
 
@@ -864,7 +886,8 @@ function animate() {
   const restCount = Math.max(0, 6 - Math.max(0, workerStates.value.length - 12))
   for (let i = 0; i < restCount; i++) {
     const pos = restPositions[i]
-    drawWorker(ctx, pos.x, pos.y, workerColors[(i + workerStates.value.length) % workerColors.length], 'idle', 0.3, animationFrame.value, 'rest')
+    if (!pos) continue
+    drawWorker(ctx, pos.x, pos.y, workerColors[(i + workerStates.value.length) % workerColors.length] || '#3498DB', 'idle', 0.3, animationFrame.value, 'rest')
   }
 
   // ===== 绘制标题横幅 =====
@@ -890,10 +913,16 @@ function initCanvas() {
   canvas.height = 420
 }
 
-onMounted(() => {
+onMounted(async () => {
   initCanvas()
   animate()
   store.connect()
+  await loadRecentRecords()
+  recordTimer = window.setInterval(() => {
+    loadRecentRecords().catch(() => {
+      // ignore
+    })
+  }, 5000)
   const resizeCanvas = () => {
     if (canvasRef.value) {
       canvasRef.value.style.width = '100%'
@@ -907,6 +936,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (animationId) cancelAnimationFrame(animationId)
   window.removeEventListener('resize', initCanvas)
+  if (recordTimer !== null) {
+    window.clearInterval(recordTimer)
+    recordTimer = null
+  }
   store.disconnect()
 })
 </script>
@@ -935,6 +968,45 @@ onBeforeUnmount(() => {
       <div class="office-wrapper" @mousemove="handleMouseMove" @mouseleave="handleMouseLeave">
         <canvas ref="canvasRef" class="office-canvas"></canvas>
       </div>
+    </div>
+
+    <div class="work-panels pixel-card">
+      <section class="work-panel">
+        <h3>🧭 实时工作进度</h3>
+        <ul class="work-live-list">
+          <li v-for="worker in workerStates" :key="worker.id">
+            <div class="work-row">
+              <strong>{{ worker.name }}</strong>
+              <span>{{ worker.status }}</span>
+            </div>
+            <p v-if="worker.current_work">当前：{{ worker.current_work }}</p>
+            <div v-if="worker.progress_percent !== null && worker.progress_percent !== undefined" class="work-progress-row">
+              <div class="work-progress-track">
+                <div class="work-progress-fill" :style="{ width: `${Math.max(0, Math.min(100, worker.progress_percent))}%` }" />
+              </div>
+              <span>{{ worker.progress_percent.toFixed(0) }}%</span>
+            </div>
+            <small v-if="worker.last_completed_work">最近完成：{{ worker.last_completed_work }}</small>
+          </li>
+        </ul>
+      </section>
+      <section class="work-panel">
+        <h3>🧾 工作记录查询</h3>
+        <ul class="work-record-list">
+          <li v-for="item in recentRecords" :key="item.id">
+            <div class="work-row">
+              <strong>{{ item.node_id }}</strong>
+              <span>{{ formatRecordTime(item.timestamp) }}</span>
+            </div>
+            <p>{{ item.title }}</p>
+            <small v-if="item.detail">{{ item.detail }}</small>
+            <div class="work-row">
+              <span>{{ item.status }}</span>
+              <span v-if="item.progress_percent !== null && item.progress_percent !== undefined">{{ item.progress_percent.toFixed(0) }}%</span>
+            </div>
+          </li>
+        </ul>
+      </section>
     </div>
 
     <!-- Hover 悬浮窗 -->
@@ -1200,6 +1272,81 @@ onBeforeUnmount(() => {
   image-rendering: crisp-edges;
 }
 
+.work-panels {
+  width: 100%;
+  max-width: 1100px;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.work-panel h3 {
+  margin: 0 0 10px;
+  font-size: 0.92rem;
+  color: #f5d06a;
+}
+
+.work-live-list,
+.work-record-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  max-height: 230px;
+  overflow: auto;
+}
+
+.work-live-list li,
+.work-record-list li {
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 248, 232, 0.04);
+  padding: 8px 10px;
+}
+
+.work-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.82rem;
+}
+
+.work-live-list p,
+.work-record-list p {
+  margin: 4px 0;
+  font-size: 0.84rem;
+  color: rgba(255, 248, 232, 0.86);
+}
+
+.work-live-list small,
+.work-record-list small {
+  color: rgba(255, 248, 232, 0.65);
+  font-size: 0.76rem;
+}
+
+.work-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.76rem;
+}
+
+.work-progress-track {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.work-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #06b6d4, #10b981);
+  border-radius: 999px;
+}
+
 /* ---------- 控制面板 ---------- */
 .studio-controls {
   width: 100%;
@@ -1298,6 +1445,10 @@ onBeforeUnmount(() => {
     justify-content: flex-start;
   }
   .studio-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .work-panels {
     grid-template-columns: 1fr;
   }
 

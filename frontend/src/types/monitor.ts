@@ -48,6 +48,20 @@ export interface LobsterRuntime {
   cpu_percent: number
   task_count: number
   mem_percent?: number
+  current_work?: string
+  progress_percent?: number | null
+  last_completed_work?: string
+  work_updated_at?: number | null
+}
+
+export interface WorkRecord {
+  id: string
+  node_id: string
+  title: string
+  detail?: string | null
+  status: string
+  progress_percent?: number | null
+  timestamp: number
 }
 
 export interface LobsterHeartbeat {

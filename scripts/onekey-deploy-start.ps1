@@ -28,6 +28,7 @@ $rootDir = Split-Path -Parent $scriptDir
 $backendDir = Join-Path $rootDir "backend"
 $frontendDir = Join-Path $rootDir "frontend"
 $runtimeDir = Join-Path $rootDir ".runtime"
+$isWindows = $env:OS -eq "Windows_NT"
 
 Ensure-Command -Name npm
 $pythonCmd = Resolve-Python
@@ -51,14 +52,23 @@ Write-Host "==> [2/4] Prepare backend virtual environment..."
 Push-Location $backendDir
 try {
     $venvDir = Join-Path $backendDir ".venv"
+    $windowsVenvPython = Join-Path $venvDir "Scripts\\python.exe"
+    $unixVenvPython = Join-Path $venvDir "bin/python"
+
+    # If repo carries an incompatible venv (e.g. copied from another OS),
+    # recreate it to ensure local startup is stable.
+    if ($isWindows -and (Test-Path $venvDir) -and (-not (Test-Path $windowsVenvPython))) {
+        Remove-Item -Recurse -Force $venvDir
+    }
+
     if (-not (Test-Path $venvDir)) {
         & $pythonCmd -m venv .venv
     }
 
-    $venvPython = Join-Path $venvDir "Scripts\\python.exe"
+    $venvPython = $windowsVenvPython
     if (-not (Test-Path $venvPython)) {
         # Fallback for non-Windows shells.
-        $venvPython = Join-Path $venvDir "bin/python"
+        $venvPython = $unixVenvPython
     }
     if (-not (Test-Path $venvPython)) {
         throw "Cannot locate Python in backend/.venv"
@@ -99,13 +109,17 @@ $venvPythonForStart = Join-Path $backendDir ".venv\\Scripts\\python.exe"
 if (-not (Test-Path $venvPythonForStart)) {
     $venvPythonForStart = Join-Path $backendDir ".venv/bin/python"
 }
+if (-not (Test-Path $venvPythonForStart)) {
+    throw "Cannot locate Python in backend/.venv for service start"
+}
 
 $backendProc = Start-Process -FilePath $venvPythonForStart `
     -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "$BackendPort") `
     -WorkingDirectory $backendDir `
     -PassThru
 
-$frontendProc = Start-Process -FilePath "npm" `
+$frontendNpm = if ($isWindows) { "npm.cmd" } else { "npm" }
+$frontendProc = Start-Process -FilePath $frontendNpm `
     -ArgumentList @("run", "preview", "--", "--host", "0.0.0.0", "--port", "$FrontendPort") `
     -WorkingDirectory $frontendDir `
     -PassThru
